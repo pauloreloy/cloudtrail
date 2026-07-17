@@ -218,3 +218,71 @@ EOF
     type = "string"
   }
 }
+
+---------
+
+Super query
+
+WITH ga AS (
+    SELECT
+      r.eventTime,
+      r.eventSource,
+      r.eventName,
+      r.useridentity.type        AS user_type,
+      r.useridentity.principalid AS principal_id,
+      r.useridentity.arn         AS user_arn,
+      r.useridentity.accountid   AS user_account,
+      r.useridentity.invokedby   AS invoked_by,
+      r.sourceipaddress,
+      r.useragent,
+      r.requestparameters['tablearn'] AS table_arn,
+      r.additionaleventdata['requesterservice'] AS requester_service,
+      r.additionaleventdata['lakeformationrolesessionname'] AS lakeformation_rolesession_name,
+      r.readOnly,
+      r.eventType,
+      r.managementEvent,
+      r.recipientAccountId,
+      r.requestid,
+      r.eventID
+    FROM cloudtrail_logs
+    CROSS JOIN UNNEST(records) AS t(r)
+    WHERE 
+      year = '2026'
+      AND month = '07'
+      AND day = '17'
+      AND r.eventName = 'GetDataAccess'
+      AND r.eventSource = 'lakeformation.amazonaws.com'
+),
+gt AS (
+    SELECT 
+      r.requestid,
+      r.requestparameters['name'] as table_name,
+      regexp_extract(
+        json_extract_scalar(
+            r.requestparameters['auditcontext'],
+            '$.additionalauditcontext'
+        ),
+        'queryId:\s*([^}]+)',
+        1
+      ) AS query_id,
+      r.requestparameters['catalogid'] as catalog_id,
+      r.requestparameters['databasename'] as database_name
+    FROM cloudtrail_logs
+    CROSS JOIN UNNEST(records) AS t(r)
+    WHERE 
+      year = '2026'
+      AND month = '07'
+      AND day = '17'
+      AND r.eventName = 'GetTable'
+      AND r.eventSource = 'glue.amazonaws.com'
+)
+SELECT 
+  ga.*,
+  gt.table_name,
+  gt.database_name,
+  gt.catalog_id,
+  gt.query_id
+FROM ga
+LEFT JOIN gt 
+  ON ga.requestid = gt.requestid
+ORDER BY ga.eventTime;
